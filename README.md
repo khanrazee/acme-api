@@ -5,15 +5,26 @@
 Requests to Acme's API are timing out after 15 seconds. After some investigation in production, they've identified that the `User#count_hits` method's response time is around 500ms and is called 50 times per second (on average).
 
 ### Proposed Solution:
-The easiest solution here is to use counter cache which is a built in feature for Rails. This will save the DB calls which are currently being
-made. For future; We could use Redis if needed. But at the moment it does not matter as current user is already present, with Redis we can fail even before loading the user.
+The easiest solution here is to use counter cache mechanism is a built in feature for Rails; But we can not use it directly for our case since we need to reset and only keep counter cache for the current month.
+This will save the DB calls which are currently being 
+made. For future; We could use Redis if needed. But at the moment it does not matter as current user is already present, With  Redis we can fail even before loading the user.
 
 The implementation of counter cache is as simple as defining it in the Hit model and adding the column into the user table
 ```ruby
 class Hit < ApplicationRecord
-  belongs_to :user, counter_cache: true
+  belongs_to :user
+  
+  # TODO: Discuss approach for using Redis cache for storing current month total hits to save this DB save call also.
+  after_create :update_users_hit_counter_cache
+  
+  # Move to concern, If more similar functions are added; And using update column explicitly to not run the call backs on user model.
+  private
+  def update_users_hit_counter_cache
+    user.update_column(:hits_count, user.hits_count+1 )
+  end
 end
 ```
+
 The migration would be as follows
 
 ```shell
