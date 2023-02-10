@@ -20,7 +20,7 @@ The migration would be as follows
 rails generate migration AddHitsCountToUsers hits_count:bigint
 rails db:migrate
 ```
-After this we would not need to use `User#count_hits`, and we could reference the `hits_count` column directly and avoid the DB call as below.
+After this we would no longer need to query the hits table and we could reference the `hits_count` column directly and avoid the DB call as below.
 
 * Note: We do need to reset the counter every 1 month as described below in the doc.
 
@@ -57,7 +57,8 @@ end
 
 We can schedule this job to run at the beginning of every month for each user and this would reset the counter_cache to 0 for that user by calling the method defined below
 ```ruby
-class UserQuotaLimit < ApplicationRecord
+# app/models/concerns/user_quota_limit.rb
+module UserQuotaLimit 
   # Moved to interactors as mentioned in the end.
   def reset_hits_count
     update_column(:hits_count, 0)
@@ -82,6 +83,8 @@ class User < ApplicationRecord
   # This can be removed if Interactor based implementation is done as mentioned at the end.
   after_save :schedule_next_reset_job, if: -> { hits_count.to_i.zero? } # Run only when we either reset back to 0 or on initial create
   validates :timezone, presence: true # Validation added to ensure we have timezone. We can default in DB as per business flow
+  validates_inclusion_of :timezone,
+                       :in => ActiveSupport::TimeZone.all.map { |tz| tz.tzinfo.name }
 end
 ```
 
@@ -150,19 +153,7 @@ while and it's a really clean way of keeping dry classes in your repo. Basically
 interactors via their organizer concept. Which is really clean and easy to manage in long term. Example is below. And of-course we need to add
 rspec coverage for unit and acceptance to ensure all this time zone/ job ID stuff is working as expected.
 
-Secondly, I would recommend not using SQL to store Hits data; It is going to expand vertically. So NOSQL might be a better approach.
-So where ever which is not apparent from the current code base Hits are being saved; I think NoSQL might be a better fit. Redis is also
-a good option but then we have persistency issue(s) with that.
-
-I did implement a cloud based solution for this for a company to save Hits data as analytics; Happy to discuss a cloud based approach
-if needed.
-
-The 10000 limit should be moved to the user level to make it more dynamic; So if in future we want to give different limits
-to different users based on plans or something; We can do that easily. At the very least; Move it to ENV variable. So we can
-modify that for easy testing of different scenarios.
-
-We need proper logging; e.g with Hits save IP and other information for book keeping purposes; If client says I did not use that much :)
-And error reporting for failures into something like Rollbar or similar.
+Something like this to keep it dry and single purpose:
 
 ```ruby
 module ApiUserQuota
@@ -178,3 +169,37 @@ module ApiUserQuota
 end
 
 ```
+
+
+Secondly, I would recommend not using SQL to store Hits data; It is going to expand vertically. So NOSQL might be a better approach.
+So where ever which is not apparent from the current code base Hits are being saved; I think NoSQL might be a better fit. Redis is also
+a good option but then we have persistency issue(s) with that.
+
+I did implement a cloud based solution for this for a company to save Hits data as analytics; Happy to discuss a cloud based approach
+if needed.
+
+The 10000 limit should be moved to the user level to make it more dynamic; So if in future we want to give different limits
+to different users based on plans or something; We can do that easily. At the very least; Move it to ENV variable. So we can
+modify that for easy testing of different scenarios.
+
+We need proper logging; e.g with Hits save IP and other information for book keeping purposes; If client says I did not use that much :)
+And error reporting for failures into something like Rollbar or similar.
+
+Add proper rspec coverage for the following scenarios: 
+#### Unit tests
+1. Create user without timezone and assert it fails. 
+2. Create user with in-valid time zone and assert it fails. 
+3. Create user with valid time zone and assert it passes. 
+4. Create valid user via fixture and ensure it queues the job (Stub the call and only test if job is called)
+5. Create Hits and assert counter cache is incremented in associated user
+6. Delete a hit and assert counter cache is decremented 
+
+
+##### Interactor Spec:
+1. Ensure when interactor is called. (Assert reset of hits_count, Assert job is called, Assert job ID is saved) 
+
+Controller/Acceptance Spec:
+1. Load fixture with 10000+ hits and assert it fails. 
+2. Load fixture with <10000 hits and assert it passes. 
+3. Change user time zone; And assert it checks proper usage based on users reset time (Use time freeze) 
+
