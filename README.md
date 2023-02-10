@@ -185,6 +185,8 @@ modify that for easy testing of different scenarios.
 We need proper logging; e.g with Hits save IP and other information for book keeping purposes; If client says I did not use that much :)
 And error reporting for failures into something like Rollbar or similar.
 
+Also perhaps adding support to translations, Considering we are doing different timezones, So error msg can be picked up dynamically if needed. 
+
 Add proper rspec coverage for the following scenarios: 
 #### Unit tests
 1. Create user without timezone and assert it fails. 
