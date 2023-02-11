@@ -72,7 +72,7 @@ We can schedule this job to run at the beginning of every month for each user an
 module UserQuotaLimit 
   # Moved to interactors as mentioned in the end.
   def reset_hits_count
-    update_column(:hits_count, 0)
+    update(hits_count: 0)
   end
   
   # Setting the time to run at users 00:00:00 at start of the month
